@@ -245,6 +245,27 @@
 
 
     /**
+     * Executes the wrapped @func {Function} only once. After the first call
+     * the result method does not do anything. Optional supports to bind a
+     * @context {Object} for execution.
+     */
+    once : function(func, context)
+    {
+      return function()
+      {
+        if (!func) {
+          return;
+        }
+
+        return func.apply(context || this, arguments);
+
+        // Set to null to allow garbage collection
+        func = null;
+      };
+    },
+
+
+    /**
      * {Function} Returns a new function that curries all given arguments to the given @func {Function}.
      */
     curry : function(func)
