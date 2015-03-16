@@ -3,6 +3,17 @@
 # This file defines tasks for the Jasy build tool we use for development and deployment of $${name}.
 #
 
+profile = Profile(session)
+
+# Configure Parts
+profile.registerPart("kernel", className="$${name}.Kernel")
+profile.registerPart("main", className="$${name}.Main", styleName="$${name}.Main")
+
+# Configure Permutations
+#profile.permutateField("device")
+#profile.setField("runtime", "browser")
+#profile.setLocales(["en", "de"])
+
 @task
 def clean():
     """Clear build cache"""
@@ -37,56 +48,27 @@ def server():
 def source():
     """Generate source (development) version"""
 
-    # Configure build
-    session.setField("debug", True)
-    # session.setLocales(["en", "de"])
+    # Force debug enabled
+    profile.setField("debug", True)
 
-    # Initialize shared objects
-    assetManager = AssetManager(session).addSourceProfile()
-    outputManager = OutputManager(session, assetManager, compressionLevel=0, formattingLevel=2)
-    fileManager = FileManager(session)
-    
-    # Store kernel script
-    outputManager.storeKernelScript("{{prefix}}/script/kernel.js", bootCode="$${name}.Kernel.boot();")
-    
-    # Process every possible permutation
-    for permutation in session.permutate():
+    # Load all scripts/assets from source folder
+    profile.setUseSource(True)
 
-        # Resolving dependencies
-        classes = ScriptResolver(session).add("$${name}.Main").getSorted()
-        
-        # Writing source loader
-        outputManager.storeLoaderScript(classes, "{{prefix}}/script/$${name}-{{id}}.js", "new $${name}.Main();")
+    # Start actual build
+    Build.run(profile)
 
 
 @task
 def build():
     """Generate deployable and combined build version"""
 
-    # Configure build
-    session.permutateField("debug", True)
-    # session.setLocales(["en", "de"])
+    # Enable both debugging and final
+    profile.permutateField("debug")
 
-    # Initialize shared objects
-    assetManager = AssetManager(session).addBuildProfile()
-    outputManager = OutputManager(session, assetManager, compressionLevel=2)
-    fileManager = FileManager(session)
+    # Enable copying and hashing of assets
+    profile.setHashAssets(True)
+    profile.setCopyAssets(True)
 
-    # Deploy assets
-    outputManager.deployAssets(["$${name}.Main"])
-
-    # Write kernel script
-    outputManager.storeKernelScript("{{prefix}}/script/kernel.js", bootCode="$${name}.Kernel.boot();")
-
-    # Copy files from source
-    fileManager.updateFile("source/index.html", "{{prefix}}/index.html")
-
-    # Process every possible permutation
-    for permutation in session.permutate():
-
-        # Resolving dependencies
-        classes = ScriptResolver(session).add("$${name}.Main").getSorted()
-
-        # Compressing classes
-        outputManager.storeCompressedScript(classes, "{{prefix}}/script/$${name}-{{id}}.js", "new $${name}.Main();")
+    # Start actual build
+    Build.run(profile)
 
