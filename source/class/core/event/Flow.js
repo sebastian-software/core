@@ -8,6 +8,8 @@
 
 (function(slice)
 {
+  "use strict";
+
   /**
    *
    *
