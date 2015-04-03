@@ -49,14 +49,18 @@
       var resolved = 0;
       var len = promisesOrValues.length;
       var result = [];
+      var resultLength = 0;
 
-      var valueCallback = function(value)
-      {
-        result.push(value);
+      var valueCallback = function(pos) {
+        return function(value)
+        {
+          result[pos] = value;
+          resultLength++;
 
-        if (result.length == len) {
-          promise.fulfill(result);
-        }
+          if (resultLength == len) {
+            promise.fulfill(result);
+          }
+        };
       };
 
       for (var i=0; i<len; i++)
@@ -65,13 +69,13 @@
 
         if (value && value.then)
         {
-          value.then(valueCallback, function(reason) {
+          value.then(valueCallback(i), function(reason) {
             promise.reject(reason);
           });
         }
         else
         {
-          valueCallback(value);
+          valueCallback(i)(value);
         }
       }
 
