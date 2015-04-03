@@ -5,229 +5,391 @@
 ==================================================================================================
 */
 
-"use strict";
-
 /**
  * Promises implementation of A+ specification passing Promises/A+ test suite.
  * http://promises-aplus.github.com/promises-spec/
+ *
+ * Based upon Native Promise Only
+ * v0.7.8-a (c) Kyle Simpson
+ * MIT License: http://getify.mit-license.org
  */
-core.Class("core.event.Promise",
-{
-	include : [core.util.MLogging],
-
-	construct : function()
-	{
-		// Initialize lists on new Promises
-		this.__onFulfilledQueue = [];
-		this.__onRejectedQueue = [];
-	},
-
-	members :
-	{
-		/** {=String} Current state */
-		__state : "pending",
-
-		/** {=Boolean} Whether the promise is locked */
-		__locked : false,
-
-		/** {=any} Any value */
-		__valueOrReason : null,
-
-		/** {=Array} Placeholder for internal fulfill queue */
-		__onFulfilledQueue : null,
-
-		/** {=Array} Placeholder for internal reject queue */
-		__onRejectedQueue : null,
 
 
-		/**
-		 * {any} Returns the value of the promise
-		 */
-		getValue : function() {
-			return this.__valueOrReason;
-		},
+(function() {
+	/*jshint validthis:true */
+	"use strict";
 
+	var builtInProp, cycle, scheduling_queue,
+		ToString = Object.prototype.toString,
+		timer = (typeof setImmediate != "undefined") ?
+			function timer(fn) { return setImmediate(fn); } :
+			setTimeout
+	;
 
-		/**
-		 * {String} Returns the current state. One of pending, fulfilled or rejected.
-		 */
-		getState : function() {
-			return this.__state;
-		},
+	// dammit, IE8.
+	try {
+		Object.defineProperty({},"x",{});
+		builtInProp = function builtInProp(obj,name,val,config) {
+			return Object.defineProperty(obj,name,{
+				value: val,
+				writable: true,
+				configurable: config !== false
+			});
+		};
+	}
+	catch (err) {
+		builtInProp = function builtInProp(obj,name,val) {
+			obj[name] = val;
+			return obj;
+		};
+	}
 
+	// Note: using a queue instead of array for efficiency
+	scheduling_queue = (function Queue() {
+		var first, last, item;
 
-		/**
-		 * Fulfill promise with @value {any?}.
-		 */
-		fulfill : function(value)
-		{
-			if (!this.__locked)
-			{
-				this.__locked = true;
-				this.__state = "fulfilled";
-				this.__valueOrReason = value;
+		function Item(fn,self) {
+			this.fn = fn;
+			this.self = self;
+			this.next = void 0;
+		}
 
-				core.Function.immediate(this.__execute, this);
-			}
-		},
+		return {
+			add: function add(fn,self) {
+				item = new Item(fn,self);
+				if (last) {
+					last.next = item;
+				}
+				else {
+					first = item;
+				}
+				last = item;
+				item = void 0;
+			},
+			drain: function drain() {
+				var f = first;
+				first = last = cycle = void 0;
 
-
-		/**
-		 * Reject promise with @reason {String|any?}.
-		 */
-		reject : function(reason)
-		{
-			if (!this.__locked)
-			{
-				this.__locked = true;
-				this.__state = "rejected";
-				this.__valueOrReason = reason;
-
-				core.Function.immediate(this.__execute, this);
-			}
-		},
-
-
-		/**
-		 * Executes a single fulfillment or rejection queue @entry {Array}
-		 * with the give @valueOrReason {any} and @state {String}.
-		 */
-		__executeEntry : function(entry, valueOrReason, state)
-		{
-			var child = entry[0];
-			var callback = entry[1];
-			var safe = entry[3];
-
-			if (callback == null)
-			{
-				if (state == "rejected") {
-					child.reject(valueOrReason);
-				} else {
-					child.fulfill(valueOrReason);
+				while (f) {
+					f.fn.call(f.self);
+					f = f.next;
 				}
 			}
-			else
-			{
-				var retval;
-				var context = entry[2];
-				if (safe)
-				{
-					try
-					{
-						retval = context ? callback.call(context, valueOrReason) : callback(valueOrReason);
-					}
-					catch (ex) {
-						child.reject(ex);
-					}
+		};
+	})();
+
+	function schedule(fn,self) {
+		scheduling_queue.add(fn,self);
+		if (!cycle) {
+			cycle = timer(scheduling_queue.drain);
+		}
+	}
+
+	// promise duck typing
+	function isThenable(o) {
+		var _then, o_type = typeof o;
+
+		if (o != null &&
+			(
+				o_type == "object" || o_type == "function"
+			)
+		) {
+			_then = o.then;
+		}
+		return typeof _then == "function" ? _then : false;
+	}
+
+	function notify() {
+		for (var i=0; i<this.chain.length; i++) {
+			notifyIsolated(
+				this,
+				(this.state === 1) ? this.chain[i].success : this.chain[i].failure,
+				this.chain[i]
+			);
+		}
+		this.chain.length = 0;
+	}
+
+	// NOTE: This is a separate function to isolate
+	// the `try..catch` so that other code can be
+	// optimized better
+	function notifyIsolated(self,cb,chain) {
+		var ret, _then;
+		try {
+			if (cb === false) {
+				chain.reject(self.msg);
+			}
+			else {
+				if (cb === true) {
+					ret = self.msg;
 				}
-				else
-				{
-					retval = context ? callback.call(context, valueOrReason) : callback(valueOrReason);
+				else {
+					ret = cb.call(void 0,self.msg);
 				}
 
-				if (retval && retval.then && typeof retval.then == "function")
-				{
-					var retstate = retval.getState ? retval.getState() : "pending";
-					if (retstate == "pending")
-					{
-						retval.then(function(value) {
-							child.fulfill(value);
-						}, function(reason) {
-							child.reject(reason);
-						});
-					}
-					else if (retstate == "fulfilled")
-				  {
-						child.fulfill(retval.getValue());
-					}
-					else if (retstate == "rejected")
-					{
-						child.reject(retval.getValue());
-					}
+				if (ret === chain.promise) {
+					chain.reject(TypeError("Promise-chain cycle"));
 				}
-				else
-				{
-					child.fulfill(retval);
+				else if (_then = isThenable(ret)) {
+					_then.call(ret,chain.resolve,chain.reject);
+				}
+				else {
+					chain.resolve(ret);
 				}
 			}
-		},
+		}
+		catch (err) {
+			chain.reject(err);
+		}
+	}
 
+	function resolve(msg) {
+		var _then, def_wrapper, self = this;
 
-		/**
-		 * Handle fulfillment or rejection of promise
-		 * Runs all registered then handlers
-		 */
-		__execute : function()
-		{
-			// Shorthands
-			var state = this.__state;
-			var queue = state == "rejected" ? this.__onRejectedQueue : this.__onFulfilledQueue;
-			var valueOrReason = this.__valueOrReason;
+		// already triggered?
+		if (self.triggered) { return; }
 
-			// Always repeat queue length check as queue could be changed within handler
-			for (var i=0; i<queue.length; i++) {
-				this.__executeEntry(queue[i], valueOrReason, state);
+		self.triggered = true;
+
+		// unwrap
+		if (self.def) {
+			self = self.def;
+		}
+
+		try {
+			if (_then = isThenable(msg)) {
+				def_wrapper = new MakeDefWrapper(self);
+				_then.call(msg,
+					function $resolve$(){ resolve.apply(def_wrapper,arguments); },
+					function $reject$(){ reject.apply(def_wrapper,arguments); }
+				);
+			}
+			else {
+				self.msg = msg;
+				self.state = 1;
+				if (self.chain.length > 0) {
+					schedule(notify,self);
+				}
+			}
+		}
+		catch (err) {
+			reject.call(def_wrapper || (new MakeDefWrapper(self)),err);
+		}
+	}
+
+	function reject(msg) {
+		var self = this;
+
+		// already triggered?
+		if (self.triggered) { return; }
+
+		self.triggered = true;
+
+		// unwrap
+		if (self.def) {
+			self = self.def;
+		}
+
+		self.msg = msg;
+		self.state = 2;
+		if (self.chain.length > 0) {
+			schedule(notify,self);
+		}
+	}
+
+	function iteratePromises(Constructor,arr,resolver,rejecter) {
+		for (var idx=0; idx<arr.length; idx++) {
+			(function IIFE(idx){
+				Constructor.resolve(arr[idx])
+				.then(
+					function $resolver$(msg){
+						resolver(idx,msg);
+					},
+					rejecter
+				);
+			})(idx);
+		}
+	}
+
+	function MakeDefWrapper(self) {
+		this.def = self;
+		this.triggered = false;
+	}
+
+	function MakeDef(self) {
+		this.promise = self;
+		this.state = 0;
+		this.triggered = false;
+		this.chain = [];
+		this.msg = void 0;
+	}
+
+	function Promise(executor, context) {
+		if (typeof executor != "function") {
+			throw TypeError("Not a function");
+		}
+
+		if (this.__NPO__ !== 0) {
+			throw TypeError("Not a promise");
+		}
+
+		// instance shadowing the inherited "brand"
+		// to signal an already "initialized" promise
+		this.__NPO__ = 1;
+
+		var def = new MakeDef(this);
+
+		this["then"] = function then(success,failure,context) {
+			if (context) {
+				if (typeof(success) == "function") {
+					success = success.bind(context);
+				}
+				if (typeof(failure) == "function") {
+					failure = failure.bind(context);
+				}
+			}
+			var o = {
+				success: typeof success == "function" ? success : true,
+				failure: typeof failure == "function" ? failure : false
+			};
+			// Note: `then(..)` itself can be borrowed to be used against
+			// a different promise constructor for making the chained promise,
+			// by substituting a different `this` binding.
+			o.promise = new this.constructor(function extractChain(resolve,reject) {
+				if (typeof resolve != "function" || typeof reject != "function") {
+					throw TypeError("Not a function");
+				}
+
+				o.resolve = resolve;
+				o.reject = reject;
+			});
+			def.chain.push(o);
+
+			if (def.state !== 0) {
+				schedule(notify,def);
 			}
 
-			// Cleanup lists for next usage
-			this.__onRejectedQueue.length = this.__onFulfilledQueue.length = 0;
-		},
-
-
-		/**
-		 * {core.event.Promise} Register fulfillment handler @onFulfilled {Function}
-		 * and rejection handler @onRejected {Function} returning new child promise.
-		 * If @safe {Boolean} is set, the default value jasy.Env.getValue("safepromises")
-		 * is overwritten. If safe is false no try and catch surrounds executing functions,
-		 * so application execution is stopped due to uncatched error.
-		 */
-		then : function(onFulfilled, onRejected, context, safe)
-		{
-			var child = new core.event.Promise;
-
-			var fullfilledQueue = this.__onFulfilledQueue;
-			var rejectedQueue = this.__onRejectedQueue;
-
-			if (safe == null) {
-				safe = jasy.Env.getValue("safepromises");
-			}
-
-			if (onFulfilled && typeof onFulfilled == "function") {
-				fullfilledQueue.push([child, onFulfilled, context, safe]);
-			} else {
-				fullfilledQueue.push([child, , , safe]);
-			}
-
-			if (onRejected && typeof onRejected == "function") {
-				rejectedQueue.push([child, onRejected, context, safe]);
-			} else {
-				rejectedQueue.push([child, , , safe]);
-			}
-
-			if (this.__locked) {
-				core.Function.immediate(this.__execute, this);
-			}
-
-			return child;
-		},
-
-
-		/**
-		 * Throws all remaining errors to application level and display promise rejecting
-		 * on console if in debug mode.
-		 */
-		done : function()
-		{
-			return this.then(null, function(reason)
-			{
+			return o.promise;
+		};
+		this["catch"] = function $catch$(failure) {
+			return this.then(void 0,failure);
+		};
+		this["done"] = function done(){
+			return this.then(void 0, function(reason) {
 				if (jasy.Env.isSet("debug"))
 				{
 					console.error("Promise rejected: ", reason);
 				}
 
 				throw reason;
-			}, null, false);
+			});
+		};
+
+		try {
+			if (context === undefined) {
+				context = void 0;
+			}
+			executor.call(
+				context,
+				function publicResolve(msg){
+					resolve.call(def,msg);
+				},
+				function publicReject(msg) {
+					reject.call(def,msg);
+				}
+			);
+		}
+		catch (err) {
+			reject.call(def,err);
 		}
 	}
-});
 
+	var PromisePrototype = builtInProp({},"constructor",Promise,
+		/*configurable=*/false
+	);
+
+	// Note: Android 4 cannot use `Object.defineProperty(..)` here
+	Promise.prototype = PromisePrototype;
+
+	// built-in "brand" to signal an "uninitialized" promise
+	builtInProp(PromisePrototype,"__NPO__",0,
+		/*configurable=*/false
+	);
+
+	builtInProp(Promise,"resolve",function Promise$resolve(msg) {
+		var Constructor = this;
+
+		// spec mandated checks
+		// note: best "isPromise" check that's practical for now
+		if (msg && typeof msg == "object" && msg.__NPO__ === 1) {
+			return msg;
+		}
+
+		return new Constructor(function executor(resolve,reject){
+			if (typeof resolve != "function" || typeof reject != "function") {
+				throw TypeError("Not a function");
+			}
+
+			resolve(msg);
+		});
+	});
+
+	builtInProp(Promise,"reject",function Promise$reject(msg) {
+		return new this(function executor(resolve,reject){
+			if (typeof resolve != "function" || typeof reject != "function") {
+				throw TypeError("Not a function");
+			}
+
+			reject(msg);
+		});
+	});
+
+	builtInProp(Promise,"all",function Promise$all(arr) {
+		var Constructor = this;
+
+		// spec mandated checks
+		if (ToString.call(arr) != "[object Array]") {
+			return Constructor.reject(TypeError("Not an array"));
+		}
+		if (arr.length === 0) {
+			return Constructor.resolve([]);
+		}
+
+		return new Constructor(function executor(resolve,reject){
+			if (typeof resolve != "function" || typeof reject != "function") {
+				throw TypeError("Not a function");
+			}
+
+			var len = arr.length, msgs = Array(len), count = 0;
+
+			iteratePromises(Constructor,arr,function resolver(idx,msg) {
+				msgs[idx] = msg;
+				if (++count === len) {
+					resolve(msgs);
+				}
+			},reject);
+		});
+	});
+
+	builtInProp(Promise,"race",function Promise$race(arr) {
+		var Constructor = this;
+
+		// spec mandated checks
+		if (ToString.call(arr) != "[object Array]") {
+			return Constructor.reject(TypeError("Not an array"));
+		}
+
+		return new Constructor(function executor(resolve,reject){
+			if (typeof resolve != "function" || typeof reject != "function") {
+				throw TypeError("Not a function");
+			}
+
+			iteratePromises(Constructor,arr,function resolver(idx,msg){
+				resolve(msg);
+			},reject);
+		});
+	});
+
+	core.Main.declareNamespace("core.event.Promise", Promise);
+
+})();

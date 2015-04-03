@@ -222,51 +222,50 @@ core.Class("core.view.Dom",
      */
     loadPartial : function(assetId, nostrip)
     {
-      var promise = new core.event.Promise;
+      return new core.event.Promise(function(resolve, reject) {
 
-      // Auto extract partial name from file name
-      // Convention over configuration FTW
-      var name = this.__partialNameExtract.exec(assetId)[1];
+        // Auto extract partial name from file name
+        // Convention over configuration FTW
+        var name = this.__partialNameExtract.exec(assetId)[1];
 
-      // Use cached partial if available
-      var existing = this.__partialCache[name];
-      if (existing)
-      {
-        this.addPartial(name, existing);
-        promise.fulfill(existing);
-        return promise;
-      }
-
-      // Otherwise load asset dynamically
-      core.io.Text.load(jasy.Asset.toUri(assetId), function(uri, errornous, data)
-      {
-        if (jasy.Env.isSet("debug"))
+        // Use cached partial if available
+        var existing = this.__partialCache[name];
+        if (existing)
         {
-          if (errornous) {
-            this.error("Failed to load partial: " + uri);
-          } else {
-            // this.log("Loaded partial: " + uri);
+          this.addPartial(name, existing);
+          return resolve(existing);
+        }
+
+        // Otherwise load asset dynamically
+        core.io.Text.load(jasy.Asset.toUri(assetId), function(uri, errornous, data)
+        {
+          if (jasy.Env.isSet("debug"))
+          {
+            if (errornous) {
+              this.error("Failed to load partial: " + uri);
+            } else {
+              // this.log("Loaded partial: " + uri);
+            }
           }
-        }
 
-        if (errornous)
-        {
-          // Reject as IO Error
-          promise.reject("io");
-        }
-        else
-        {
-          // Enable stripping (to remove white spaces from formatting)
-          var template = core.template.Compiler.compile(data.text, this.getLabels(), nostrip, assetId);
-          this.addPartial(name, template);
-          this.__partialCache[name] = template;
+          if (errornous)
+          {
+            // Reject as IO Error
+            reject("io");
+          }
+          else
+          {
+            // Enable stripping (to remove white spaces from formatting)
+            var template = core.template.Compiler.compile(data.text, this.getLabels(), nostrip, assetId);
+            this.addPartial(name, template);
+            this.__partialCache[name] = template;
 
-          // Finally fulfill
-          promise.fulfill(template);
-        }
+            // Finally fulfill
+            resolve(template);
+          }
+        }, this);
+
       }, this);
-
-      return promise;
     },
 
 
@@ -276,46 +275,45 @@ core.Class("core.view.Dom",
      */
     loadTemplate : function(assetId, nostrip)
     {
-      var promise = new core.event.Promise;
+      return new core.event.Promise(function(resolve, reject) {
 
-      // Use cached template if available
-      var existing = this.__templateCache[assetId];
-      if (existing)
-      {
-        this.setTemplate(existing);
-        promise.fulfill(existing);
-        return promise;
-      }
-
-      core.io.Text.load(jasy.Asset.toUri(assetId), function(uri, errornous, data)
-      {
-        if (jasy.Env.isSet("debug"))
+        // Use cached template if available
+        var existing = this.__templateCache[assetId];
+        if (existing)
         {
-          if (errornous) {
-            this.error("Failed to load template: " + uri);
-          } else {
-            // this.log("Loaded template: " + uri);
+          this.setTemplate(existing);
+          return resolve(existing);
+        }
+
+        core.io.Text.load(jasy.Asset.toUri(assetId), function(uri, errornous, data)
+        {
+          if (jasy.Env.isSet("debug"))
+          {
+            if (errornous) {
+              this.error("Failed to load template: " + uri);
+            } else {
+              // this.log("Loaded template: " + uri);
+            }
           }
-        }
 
-        if (errornous)
-        {
-          // Reject as IO Error
-          promise.reject("io");
-        }
-        else
-        {
-          // Enable stripping (to remove white spaces from formatting)
-          var template = core.template.Compiler.compile(data.text, this.getLabels(), nostrip, assetId);
-          this.setTemplate(template);
-          this.__templateCache[assetId] = template;
+          if (errornous)
+          {
+            // Reject as IO Error
+            reject("io");
+          }
+          else
+          {
+            // Enable stripping (to remove white spaces from formatting)
+            var template = core.template.Compiler.compile(data.text, this.getLabels(), nostrip, assetId);
+            this.setTemplate(template);
+            this.__templateCache[assetId] = template;
 
-          // Finally fulfill
-          promise.fulfill(template);
-        }
+            // Finally fulfill
+            resolve(template);
+          }
+        }, this);
+
       }, this);
-
-      return promise;
     },
 
 
@@ -325,23 +323,21 @@ core.Class("core.view.Dom",
      */
     loadStyleSheet : function(assetId)
     {
-      var promise = new core.event.Promise;
-
-      core.io.StyleSheet.load(jasy.Asset.toUri(assetId), function(uri, errornous, data)
-      {
-        if (jasy.Env.isSet("debug"))
+      return new core.event.Promise(function(resolve, reject) {
+        core.io.StyleSheet.load(jasy.Asset.toUri(assetId), function(uri, errornous, data)
         {
-          if (errornous) {
-            this.error("Failed to load stylesheet: " + uri);
-          } else {
-            // this.log("Loaded stylesheet: " + uri);
+          if (jasy.Env.isSet("debug"))
+          {
+            if (errornous) {
+              this.error("Failed to load stylesheet: " + uri);
+            } else {
+              // this.log("Loaded stylesheet: " + uri);
+            }
           }
-        }
 
-        errornous ? promise.reject("io") : promise.fulfill(data);
+          errornous ? reject("io") : resolve(data);
+        }, this);
       }, this);
-
-      return promise;
     }
   }
 });

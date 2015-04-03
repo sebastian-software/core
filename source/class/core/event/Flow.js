@@ -8,6 +8,8 @@
 
 (function(slice)
 {
+  "use strict";
+
   /**
    *
    *
@@ -27,7 +29,7 @@
     {
       core.Assert.isType(mapFunction, "Function", "Flow control map() requires second parameter to be an mapping function!");
 
-      if (context != null) {
+      if (context !== undefined) {
         core.Assert.isType(context, "Object", "Flow control map() requires third parameter to be an context objext for the mapping function!");
       }
     }
@@ -44,38 +46,38 @@
     }
     else if (core.Main.isTypeOf(promisesOrValues, "Array"))
     {
-      var promise = new core.event.Promise;
+      return new core.event.Promise(function(resolve, reject) {
+        //var resolved = 0;
+        var len = promisesOrValues.length;
+        var result = [];
+        var resultLength = 0;
 
-      var resolved = 0;
-      var len = promisesOrValues.length;
-      var result = [];
+        var valueCallback = function(pos) {
+          return function(value)
+          {
+            result[pos] = value;
+            resultLength++;
 
-      var valueCallback = function(value)
-      {
-        result.push(value);
+            if (resultLength == len) {
+              resolve(result);
+            }
+          };
+        };
 
-        if (result.length == len) {
-          promise.fulfill(result);
-        }
-      };
-
-      for (var i=0; i<len; i++)
-      {
-        var value = map(promisesOrValues[i], mapFunction, context);
-
-        if (value && value.then)
+        for (var i=0; i<len; i++)
         {
-          value.then(valueCallback, function(reason) {
-            promise.reject(reason);
-          });
-        }
-        else
-        {
-          valueCallback(value);
-        }
-      }
+          var value = map(promisesOrValues[i], mapFunction, context);
 
-      return promise;
+          if (value && value.then)
+          {
+            value.then(valueCallback(i), reject);
+          }
+          else
+          {
+            valueCallback(i)(value);
+          }
+        }
+      });
     }
     else
     {
@@ -99,9 +101,9 @@
 
       if ((result == null) || (!result.then))
       {
-        var promise = new core.event.Promise;
-        promise.fulfill(result);
-        return promise;
+        return new core.event.Promise(function(resolve){
+          resolve(result);
+        });
       }
       else
       {
@@ -110,9 +112,9 @@
     }
     catch (e)
     {
-      var promise = new core.event.Promise;
-      promise.reject(e);
-      return promise;
+      return new core.event.Promise(function(resolve, reject) {
+        reject(e);
+      });
     }
   };
 
@@ -157,48 +159,47 @@
         core.Assert.isType(promisesOrValues, "ArrayOrPromise");
       }
 
-      var promise = new core.event.Promise;
-      var reasons = [];
-      var promisesLength = promisesOrValues.length;
+      return new core.event.Promise(function(resolve, reject) {
+        var reasons = [];
+        var promisesLength = promisesOrValues.length;
 
-      for (var i=0, l=promisesLength; i<l; i++)
-      {
-        var value = promisesOrValues[i];
-
-        if (value && value.then)
+        for (var i=0, l=promisesLength; i<l; i++)
         {
-          value.then(function(value)
+          var value = promisesOrValues[i];
+
+          if (value && value.then)
+          {
+            value.then(function(value)
+            {
+              if (promisesLength > 0)
+              {
+                resolve(value);
+                promisesLength = -1;
+              }
+            },
+            function(reason)
+            {
+              if (promisesLength > 0)
+              {
+                reasons.push(reason);
+                promisesLength--;
+
+                if (promisesLength == 0) {
+                  reject(reasons);
+                }
+              }
+            });
+          }
+          else
           {
             if (promisesLength > 0)
             {
-              promise.fulfill(value);
+              resolve(value);
               promisesLength = -1;
             }
-          },
-          function(reason)
-          {
-            if (promisesLength > 0)
-            {
-              reasons.push(reason);
-              promisesLength--;
-
-              if (promisesLength == 0) {
-                promise.reject(reasons);
-              }
-            }
-          });
-        }
-        else
-        {
-          if (promisesLength > 0)
-          {
-            promise.fulfill(value);
-            promisesLength = -1;
           }
         }
-      }
-
-      return promise;
+      });
     },
 
 
@@ -217,6 +218,38 @@
       }
 
       return map(promisesOrValues, identity, context);
+    },
+
+
+    /**
+     * {core.event.Promise} Return a promise that will resolve only once all the
+     * inputs from @hashmap {Map} have resolved.
+     * The resolution value of the returned promise will be an map containing the
+     * resolution values of each of the inputs with their corresponding keys.
+     *
+     * If any of the input promises is rejected, the returned promise will be
+     * rejected with the reason from the first one that is rejected.
+     */
+    hash : function(hashmap, context)
+    {
+      if (jasy.Env.isSet("debug")) {
+        core.Assert.isType(hashmap, "Object");
+      }
+
+      var keylist = core.Object.getKeys(hashmap);
+      var valuelist = new Array(keylist.length);
+      for (var i=0,ii=keylist.length; i<ii; i++) {
+        valuelist[i] = hashmap[keylist[i]];
+      }
+      var promise = map(valuelist, identity, context);
+
+      return promise.then(function(result) {
+        var retValue = {};
+        for (var i=0,ii=keylist.length; i<ii; i++) {
+          retValue[keylist[i]] = result[i];
+        }
+        return retValue;
+      });
     },
 
 
@@ -241,36 +274,37 @@
       }
 
       var args = slice.call(arguments, 2);
-      var promise = new core.event.Promise;
-      var result = [];
+      var promise = new core.event.Promise(function(resolve, reject) {
+        var result = [];
 
-      var prom;
+        var prom;
 
-      for (var i=0, l=tasks.length; i<l; i++)
-      {
-        if (!prom)
+        for (var i=0, l=tasks.length; i<l; i++)
         {
-          prom = promisify(tasks[i], context, args);
+          if (!prom)
+          {
+            prom = promisify(tasks[i], context, args);
+          }
+          else
+          {
+            prom = prom.then(function(value) {
+              result.push(value);
+            },
+            function(reason) {
+              reject(reason);
+            }).then(promisifyGenerator(tasks[i], context, args));
+          }
         }
-        else
-        {
-          prom = prom.then(function(value) {
-            result.push(value);
-          },
-          function(reason) {
-            promise.reject(reason);
-          }).then(promisifyGenerator(tasks[i], context, args));
-        }
-      }
 
-      prom.then(function(value)
-      {
-        result.push(value);
-        promise.fulfill(result);
-      },
-      function(reason) {
-        promise.reject(reason);
-      });
+        prom.then(function(value)
+        {
+          result.push(value);
+          resolve(result);
+        },
+        function(reason) {
+          reject(reason);
+        });
+      }.bind(this));
 
       return promise;
     },

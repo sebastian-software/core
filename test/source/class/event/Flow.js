@@ -5,14 +5,12 @@ suite.test("sequence", function() {
   var result = [];  
 
   var func1 = function() {
-    var promise = new core.event.Promise;
-
-    core.Function.timeout(function() {
-      result.push("func1");
-      promise.fulfill("func1");
-    }, null, 50);
-
-    return promise;
+    return new core.event.Promise(function(resolve) {
+      core.Function.timeout(function() {
+        result.push("func1");
+        resolve("func1");
+      }, null, 50);
+    });
   };
   var func2 = function() {
     result.push("func2");
