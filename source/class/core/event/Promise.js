@@ -274,6 +274,16 @@
 		this["catch"] = function $catch$(failure) {
 			return this.then(void 0,failure);
 		};
+		this["done"] = function done(){
+			return this.then(void 0, function(reason) {
+				if (jasy.Env.isSet("debug"))
+				{
+					console.error("Promise rejected: ", reason);
+				}
+
+				throw reason;
+			});
+		};
 
 		try {
 			if (context === undefined) {
