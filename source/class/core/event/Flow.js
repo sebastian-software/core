@@ -29,7 +29,7 @@
     {
       core.Assert.isType(mapFunction, "Function", "Flow control map() requires second parameter to be an mapping function!");
 
-      if (context != null) {
+      if (context !== undefined) {
         core.Assert.isType(context, "Object", "Flow control map() requires third parameter to be an context objext for the mapping function!");
       }
     }
@@ -46,42 +46,38 @@
     }
     else if (core.Main.isTypeOf(promisesOrValues, "Array"))
     {
-      var promise = new core.event.Promise;
+      return new core.event.Promise(function(resolve, reject) {
+        //var resolved = 0;
+        var len = promisesOrValues.length;
+        var result = [];
+        var resultLength = 0;
 
-      var resolved = 0;
-      var len = promisesOrValues.length;
-      var result = [];
-      var resultLength = 0;
+        var valueCallback = function(pos) {
+          return function(value)
+          {
+            result[pos] = value;
+            resultLength++;
 
-      var valueCallback = function(pos) {
-        return function(value)
-        {
-          result[pos] = value;
-          resultLength++;
-
-          if (resultLength == len) {
-            promise.fulfill(result);
-          }
+            if (resultLength == len) {
+              resolve(result);
+            }
+          };
         };
-      };
 
-      for (var i=0; i<len; i++)
-      {
-        var value = map(promisesOrValues[i], mapFunction, context);
-
-        if (value && value.then)
+        for (var i=0; i<len; i++)
         {
-          value.then(valueCallback(i), function(reason) {
-            promise.reject(reason);
-          });
-        }
-        else
-        {
-          valueCallback(i)(value);
-        }
-      }
+          var value = map(promisesOrValues[i], mapFunction, context);
 
-      return promise;
+          if (value && value.then)
+          {
+            value.then(valueCallback(i), reject);
+          }
+          else
+          {
+            valueCallback(i)(value);
+          }
+        }
+      });
     }
     else
     {
@@ -105,9 +101,9 @@
 
       if ((result == null) || (!result.then))
       {
-        var promise = new core.event.Promise;
-        promise.fulfill(result);
-        return promise;
+        return new core.event.Promise(function(resolve){
+          resolve(result);
+        });
       }
       else
       {
@@ -116,9 +112,9 @@
     }
     catch (e)
     {
-      var promise = new core.event.Promise;
-      promise.reject(e);
-      return promise;
+      return new core.event.Promise(function(resolve, reject) {
+        reject(e);
+      });
     }
   };
 
@@ -163,48 +159,47 @@
         core.Assert.isType(promisesOrValues, "ArrayOrPromise");
       }
 
-      var promise = new core.event.Promise;
-      var reasons = [];
-      var promisesLength = promisesOrValues.length;
+      return new core.event.Promise(function(resolve, reject) {
+        var reasons = [];
+        var promisesLength = promisesOrValues.length;
 
-      for (var i=0, l=promisesLength; i<l; i++)
-      {
-        var value = promisesOrValues[i];
-
-        if (value && value.then)
+        for (var i=0, l=promisesLength; i<l; i++)
         {
-          value.then(function(value)
+          var value = promisesOrValues[i];
+
+          if (value && value.then)
+          {
+            value.then(function(value)
+            {
+              if (promisesLength > 0)
+              {
+                resolve(value);
+                promisesLength = -1;
+              }
+            },
+            function(reason)
+            {
+              if (promisesLength > 0)
+              {
+                reasons.push(reason);
+                promisesLength--;
+
+                if (promisesLength == 0) {
+                  reject(reason);
+                }
+              }
+            });
+          }
+          else
           {
             if (promisesLength > 0)
             {
-              promise.fulfill(value);
+              resolve(value);
               promisesLength = -1;
             }
-          },
-          function(reason)
-          {
-            if (promisesLength > 0)
-            {
-              reasons.push(reason);
-              promisesLength--;
-
-              if (promisesLength == 0) {
-                promise.reject(reasons);
-              }
-            }
-          });
-        }
-        else
-        {
-          if (promisesLength > 0)
-          {
-            promise.fulfill(value);
-            promisesLength = -1;
           }
         }
-      }
-
-      return promise;
+      });
     },
 
 
@@ -279,36 +274,37 @@
       }
 
       var args = slice.call(arguments, 2);
-      var promise = new core.event.Promise;
-      var result = [];
+      var promise = new core.event.Promise(function(resolve, reject) {
+        var result = [];
 
-      var prom;
+        var prom;
 
-      for (var i=0, l=tasks.length; i<l; i++)
-      {
-        if (!prom)
+        for (var i=0, l=tasks.length; i<l; i++)
         {
-          prom = promisify(tasks[i], context, args);
+          if (!prom)
+          {
+            prom = promisify(tasks[i], context, args);
+          }
+          else
+          {
+            prom = prom.then(function(value) {
+              result.push(value);
+            },
+            function(reason) {
+              reject(reason);
+            }).then(promisifyGenerator(tasks[i], context, args));
+          }
         }
-        else
-        {
-          prom = prom.then(function(value) {
-            result.push(value);
-          },
-          function(reason) {
-            promise.reject(reason);
-          }).then(promisifyGenerator(tasks[i], context, args));
-        }
-      }
 
-      prom.then(function(value)
-      {
-        result.push(value);
-        promise.fulfill(result);
-      },
-      function(reason) {
-        promise.reject(reason);
-      });
+        prom.then(function(value)
+        {
+          result.push(value);
+          fulfill(result);
+        },
+        function(reason) {
+          reject(reason);
+        });
+      }.bind(this));
 
       return promise;
     },
