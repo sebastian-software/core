@@ -224,7 +224,7 @@
 		this.msg = void 0;
 	}
 
-	function Promise(executor) {
+	function Promise(executor, context) {
 		if (typeof executor != "function") {
 			throw TypeError("Not a function");
 		}
@@ -239,7 +239,15 @@
 
 		var def = new MakeDef(this);
 
-		this["then"] = function then(success,failure) {
+		this["then"] = function then(success,failure,context) {
+			if (context) {
+				if (typeof(success) == "function") {
+					success = success.bind(context);
+				}
+				if (typeof(failure) == "function") {
+					failure = failure.bind(context);
+				}
+			}
 			var o = {
 				success: typeof success == "function" ? success : true,
 				failure: typeof failure == "function" ? failure : false
@@ -268,8 +276,11 @@
 		};
 
 		try {
+			if (context === undefined) {
+				context = void 0;
+			}
 			executor.call(
-				void 0,
+				context,
 				function publicResolve(msg){
 					resolve.call(def,msg);
 				},

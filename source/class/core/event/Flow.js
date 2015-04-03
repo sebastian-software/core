@@ -185,7 +185,7 @@
                 promisesLength--;
 
                 if (promisesLength == 0) {
-                  reject(reason);
+                  reject(reasons);
                 }
               }
             });
@@ -299,7 +299,7 @@
         prom.then(function(value)
         {
           result.push(value);
-          fulfill(result);
+          resolve(result);
         },
         function(reason) {
           reject(reason);
