@@ -227,6 +227,38 @@
 
 
     /**
+     * {core.event.Promise} Return a promise that will resolve only once all the
+     * inputs from @hashmap {Map} have resolved.
+     * The resolution value of the returned promise will be an map containing the
+     * resolution values of each of the inputs with their corresponding keys.
+     *
+     * If any of the input promises is rejected, the returned promise will be
+     * rejected with the reason from the first one that is rejected.
+     */
+    hash : function(hashmap, context)
+    {
+      if (jasy.Env.isSet("debug")) {
+        core.Assert.isType(hashmap, "Object");
+      }
+
+      var keylist = core.Object.getKeys(hashmap);
+      var valuelist = new Array(keylist.length);
+      for (var i=0,ii=keylist.length; i<ii; i++) {
+        valuelist[i] = hashmap[keylist[i]];
+      }
+      var promise = map(valuelist, identity, context);
+
+      return promise.then(function(result) {
+        var retValue = {};
+        for (var i=0,ii=keylist.length; i<ii; i++) {
+          retValue[keylist[i]] = result[i];
+        }
+        return retValue;
+      });
+    },
+
+
+    /**
      * {Promise} Calls all functions of @tasks {Array} in @context {var} with following arguments
      * @args in sequence.
      *
