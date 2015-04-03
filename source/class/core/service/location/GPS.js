@@ -12,24 +12,22 @@ core.Module("core.service.location.GPS",
 {
   detect : function()
   {
-    var promise = new core.event.Promise;
-
-    if (navigator.geolocation)
-    {
-      navigator.geolocation.getCurrentPosition(function(result)
+    return new core.event.Promise(function(resolve, reject) {
+      if (navigator.geolocation)
       {
-        if (result) {
-          promise.fulfill(result.coords);
-        } else {
-          promise.reject("Empty GPS response");
-        }
-      });
-    }
-    else
-    {
-      promise.reject("No GPS support!");
-    }
-
-    return promise;
+        navigator.geolocation.getCurrentPosition(function(result)
+        {
+          if (result) {
+            resolve(result.coords);
+          } else {
+            reject("Empty GPS response");
+          }
+        });
+      }
+      else
+      {
+        reject("No GPS support!");
+      }
+    });
   }
 });

@@ -108,19 +108,24 @@
 			 * and @data {var?null} in operations queue.
 			 */
 			__scheduleActivity : function(action, key, data) {
-				var promise = new core.event.Promise();
 				var tracker = this.__tracker;
+				var queue = this.__queue;
+				var promise = new core.event.Promise(function(resolve, reject) {
+					queue.push({
+						action: action,
+						key: key,
+						data: this._encode(data, action),
+						promise: {
+							resolve: resolve,
+							reject: reject
+						},
+						value: null,
+						error: null
+					});
+				});
 
 				tracker[action]++;
 
-				this.__queue.push({
-					action: action,
-					key: key,
-					data: this._encode(data, action),
-					promise: promise,
-					value: null,
-					error: null
-				});
 
 				this.fireEvent("change");
 
@@ -154,13 +159,13 @@
 
 					this.__fireStorageEvent(ActionEventStartMapper[action], true, task);
 
-					var promise2 = new core.event.Promise();
+					var promise2 = core.event.Promise.resolve();
 					promise2.then(function() {
 						return this._communicate(task.action, task.key, task.data);
 					}, null, this).then(function(value) {
 						task.value = value;
 						task.error = null;
-						promise.fulfill(task);
+						promise.resolve(task);
 						this.__fireStorageEvent(ActionEventEndMapper[action], true, task);
 						this.__flush();
 					}, function(reason) {
@@ -170,7 +175,7 @@
 						this.__fireStorageEvent(ActionEventEndMapper[action], false, task);
 						this.__flush();
 					}, this).done();
-					promise2.fulfill();
+					
 				} else {
 					this.__flushMutex = false;
 				}
