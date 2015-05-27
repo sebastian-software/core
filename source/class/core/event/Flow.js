@@ -63,7 +63,9 @@
             }
           };
         };
-
+        if (len === 0) {
+          return resolve([]);
+        }
         for (var i=0; i<len; i++)
         {
           var value = map(promisesOrValues[i], mapFunction, context);
