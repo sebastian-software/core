@@ -122,7 +122,7 @@
 			 * {String} Public render method which transforms the stored template text using the @data {Map},
 			 * runtime specific @partials {Map?null} and @labels {Map?null}.
 			 */
-			render: function(data, partials, labels)
+			render: function(data, partials, labels, commands)
 			{
 				if (jasy.Env.isSet("debug"))
 				{
@@ -143,7 +143,7 @@
 				{
 					try
 					{
-						return this.__render(data, partials, labels);
+						return this.__render(data, partials, labels, commands);
 					}
 					catch(ex)
 					{
@@ -153,7 +153,7 @@
 				}
 				else
 				{
-					return this.__render(data, partials, labels);
+					return this.__render(data, partials, labels, commands);
 				}
 			},
 
@@ -185,11 +185,11 @@
 			/**
 			 * {String} Tries to find a partial in the current scope and render it
 			 */
-			_partial: function(name, data, partials, labels)
+			_partial: function(name, data, partials, labels, commands)
 			{
 				if (partials && hasOwnProperty.call(partials, name))
 				{
-					return partials[name].__render(data, partials, labels);
+					return partials[name].__render(data, partials, labels, commands);
 				}
 				else
 				{
@@ -209,7 +209,7 @@
 			 *
 			 * #break(core.template.Compiler)
 			 */
-			_label: function(name, data, partials, labels)
+			_label: function(name, data, partials, labels, commands)
 			{
 				var text = labels && labels[name];
 				if (text == null) {
@@ -222,7 +222,7 @@
 				}
 
 				var compiledLabel = core.template.Compiler.compile(text);
-				return compiledLabel.__render(data, partials, labels);
+				return compiledLabel.__render(data, partials, labels, commands);
 			},
 
 
@@ -230,7 +230,7 @@
 			 * Renders a section using the given @data {var}, user
 			 * defined @partials {Map} and @labels {Map} and a @section {Function} specific renderer.
 			 */
-			_section: function(key, method, data, partials, labels, section)
+			_section: function(key, method, data, partials, labels, section, commands)
 			{
 				var value = accessor[method](key, data);
 				if (value !== undef)
@@ -242,15 +242,33 @@
 
 					if (value instanceof Array)
 					{
+						var a = [];
 						for (var i=0, l=value.length; i<l; i++) {
-							section.call(this, value[i], partials, labels);
+							a.push(section.call(this, value[i], partials, labels, commands));
 						}
+						return a;
 					}
 					else
 					{
-						section.call(this, value, partials, labels);
+						return section.call(this, value, partials, labels, commands);
 					}
 				}
+			},
+
+
+			/**
+			 * Renders a command using the given @data {var}, user
+			 * defined @partials {Map} and @labels {Map} and a @section {Function} specific renderer.
+			 */
+			_command: function(command, innerFnt, parameter, data, partials, labels, commands)
+			{
+				if (jasy.Env.isSet("debug"))
+				{
+					core.Assert.isType(commands, "Object", "Commands must be type of Object");
+					core.Assert.isNotNull(commands[command], "Command '" + command + "' not defined!");
+				}
+
+				return commands[command](parameter)(this, innerFnt, parameter, data, partials, labels, commands);
 			},
 
 
