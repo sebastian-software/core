@@ -1,3 +1,8 @@
+[unmaintained-url]: .github/ISSUE_TEMPLATE.md
+[unmaintained-image]: https://img.shields.io/badge/project-unmaintained-red.svg
+
+[![Project unmaintained][unmaintained-image]][unmaintained-url]
+
 Core - A Fine Foundation for JavaScript Projects
 ================================================
 
